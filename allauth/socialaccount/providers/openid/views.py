@@ -38,6 +38,7 @@ def login(request):
             server_settings = \
                 provider.get_server_settings(request.GET.get('openid'))
             stateless = server_settings.get('stateless', False)
+            print(f'Forcing stateless: {stateless}')
             client = _openid_consumer(request, stateless)
             try:
                 auth_request = client.begin(form.cleaned_data['openid'])
@@ -89,6 +90,7 @@ def callback(request):
     server_settings = \
         provider.get_server_settings(request.GET.get('openid.op_endpoint'))
     stateless = server_settings.get('stateless', False)
+    print(f'Forcing stateless: {stateless}')
     client = _openid_consumer(request, stateless)
     response = client.complete(
         dict(list(request.GET.items()) + list(request.POST.items())),
