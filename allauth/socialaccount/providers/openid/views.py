@@ -22,8 +22,8 @@ from .provider import OpenIDProvider
 from .utils import AXAttributes, DBOpenIDStore, JSONSafeSession, SRegFields
 
 
-def _openid_consumer(request):
-    store = DBOpenIDStore()
+def _openid_consumer(request, stateless=False):
+    store = None if stateless else DBOpenIDStore()
     client = consumer.Consumer(JSONSafeSession(request.session), store)
     return client
 
@@ -34,7 +34,12 @@ def login(request):
             dict(list(request.GET.items()) + list(request.POST.items()))
         )
         if form.is_valid():
-            client = _openid_consumer(request)
+            provider = OpenIDProvider(request)
+            server_settings = \
+                provider.get_server_settings(form.cleaned_data['openid'])
+            stateless = server_settings.get('stateless', False)
+            client = _openid_consumer(request, stateless)
+            realm = provider.get_settings().get('REALM', request.build_absolute_uri('/'))
             try:
                 auth_request = client.begin(form.cleaned_data['openid'])
                 if QUERY_EMAIL:
@@ -47,9 +52,6 @@ def login(request):
                     for name in AXAttributes:
                         ax.add(AttrInfo(name,
                                         required=True))
-                    provider = OpenIDProvider(request)
-                    server_settings = \
-                        provider.get_server_settings(request.GET.get('openid'))
                     extra_attributes = \
                         server_settings.get('extra_attributes', [])
                     for _, name, required in extra_attributes:
@@ -62,7 +64,7 @@ def login(request):
                 auth_request.return_to_args['next'] = \
                     form.cleaned_data.get('next', '/')
                 redirect_url = auth_request.redirectURL(
-                    request.build_absolute_uri('/'),
+                    realm,
                     request.build_absolute_uri(callback_url))
                 return HttpResponseRedirect(redirect_url)
             # UnicodeDecodeError:
@@ -84,7 +86,11 @@ def login(request):
 
 @csrf_exempt
 def callback(request):
-    client = _openid_consumer(request)
+    provider = OpenIDProvider(request)
+    endpoint = request.GET.get('openid.op_endpoint', '')
+    server_settings = provider.get_server_settings(endpoint)
+    stateless = server_settings.get('stateless', False)
+    client = _openid_consumer(request, stateless)
     response = client.complete(
         dict(list(request.GET.items()) + list(request.POST.items())),
         request.build_absolute_uri(request.path))
